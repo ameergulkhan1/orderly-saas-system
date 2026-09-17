@@ -4,10 +4,204 @@ import { sign, verify } from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
 import { HttpError } from '../../lib/httpError';
 import { env } from '../../config/env';
+import { firebaseAuth } from '../../lib/firebaseAdmin';
 import type { Prisma } from '@prisma/client';
 
 export class AuthService {
   constructor(private prisma: PrismaClient) {}
+
+  // ============================================
+  // GOOGLE AUTH (Firebase ID token exchange)
+  // ============================================
+
+  async googleLogin(body: { idToken: string }) {
+    let decoded;
+    try {
+      decoded = await firebaseAuth.verifyIdToken(body.idToken);
+    } catch {
+      throw new HttpError(401, 'Invalid Google token', 'INVALID_GOOGLE_TOKEN');
+    }
+
+    const email = decoded.email;
+    if (!email) {
+      throw new HttpError(400, 'Google account has no email', 'NO_EMAIL');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { email },
+      include: { business: true },
+    });
+
+    if (!user) {
+      throw new HttpError(
+        404,
+        'No account found for this email. Please register first.',
+        'USER_NOT_FOUND'
+      );
+    }
+
+    if (user.status === 'SUSPENDED') {
+      throw new HttpError(403, 'Account suspended');
+    }
+
+    const tokens = this.generateTokens(
+      user.id,
+      user.businessId,
+      user.email,
+      user.role
+    );
+
+    await this.prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: await hash(tokens.refreshToken, 10),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      business: user.business
+        ? { id: user.business.id, name: user.business.name }
+        : null,
+      tokens,
+    };
+  }
+
+  async googleRegister(body: {
+    idToken: string;
+    businessName?: string;
+    phone?: string;
+  }) {
+    let decoded;
+    try {
+      decoded = await firebaseAuth.verifyIdToken(body.idToken);
+    } catch {
+      throw new HttpError(401, 'Invalid Google token', 'INVALID_GOOGLE_TOKEN');
+    }
+
+    const email = decoded.email;
+    const name = decoded.name ?? email?.split('@')[0] ?? 'User';
+
+    if (!email) {
+      throw new HttpError(400, 'Google account has no email', 'NO_EMAIL');
+    }
+
+    // If user already exists, log them in
+    const existing = await this.prisma.user.findFirst({
+      where: { email },
+      include: { business: true },
+    });
+
+    if (existing) {
+      const tokens = this.generateTokens(
+        existing.id,
+        existing.businessId,
+        existing.email,
+        existing.role
+      );
+
+      await this.prisma.refreshToken.create({
+        data: {
+          userId: existing.id,
+          tokenHash: await hash(tokens.refreshToken, 10),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      await this.prisma.user.update({
+        where: { id: existing.id },
+        data: { lastLoginAt: new Date() },
+      });
+
+      return {
+        user: {
+          id: existing.id,
+          name: existing.name,
+          email: existing.email,
+          role: existing.role,
+        },
+        business: existing.business
+          ? { id: existing.business.id, name: existing.business.name }
+          : null,
+        tokens,
+      };
+    }
+
+    // Create new business + owner user in a single transaction
+    const result = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const business = await tx.business.create({
+          data: {
+            name: body.businessName?.trim() || `${name}'s Business`,
+            phone: body.phone ?? null,
+          },
+        });
+
+        const user = await tx.user.create({
+          data: {
+            businessId: business.id,
+            email,
+            passwordHash: await hash(randomBytes(32).toString('hex'), 12),
+            name,
+            role: 'OWNER',
+            status: 'ACTIVE',
+            lastLoginAt: new Date(),
+          },
+        });
+
+        await tx.business.update({
+          where: { id: business.id },
+          data: { ownerId: user.id },
+        });
+
+        const tokens = this.generateTokens(
+          user.id,
+          business.id,
+          user.email,
+          user.role
+        );
+
+        await tx.refreshToken.create({
+          data: {
+            userId: user.id,
+            tokenHash: await hash(tokens.refreshToken, 10),
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        });
+
+        return { user, business, tokens };
+      }
+    );
+
+    return {
+      user: {
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email,
+        role: result.user.role,
+      },
+      business: {
+        id: result.business.id,
+        name: result.business.name,
+      },
+      tokens: result.tokens,
+    };
+  }
+
+  // ============================================
+  // EMAIL / PASSWORD AUTH
+  // ============================================
 
   async register(data: { email: string; password: string; name: string; businessName: string; phone: string }) {
     const existingUser = await this.prisma.user.findFirst({
@@ -44,7 +238,6 @@ export class AuthService {
         data: { ownerId: user.id }
       });
 
-      // ✅ Pass user.role
       const tokens = this.generateTokens(user.id, business.id, user.email, user.role);
 
       await tx.refreshToken.create({
@@ -91,7 +284,6 @@ export class AuthService {
       throw new HttpError(403, 'Account suspended');
     }
 
-    // ✅ Pass user.role
     const tokens = this.generateTokens(user.id, user.businessId, user.email, user.role);
 
     await this.prisma.refreshToken.create({
@@ -165,7 +357,6 @@ export class AuthService {
       throw new HttpError(401, 'Invalid refresh token');
     }
 
-    // ✅ Fetch current role from DB
     const user = await this.prisma.user.findUnique({
       where: { id: payload.userId },
       select: { role: true }
@@ -270,7 +461,10 @@ export class AuthService {
     return { message: 'Password reset successfully' };
   }
 
-  // ✅ FIXED: Includes role
+  // ============================================
+  // HELPERS
+  // ============================================
+
   private generateTokens(userId: string, businessId: string, email: string, role: string) {
     const payload = {
       userId,
