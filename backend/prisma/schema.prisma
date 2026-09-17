@@ -1,0 +1,480 @@
+// ============================================================
+// ORDERLY - SELLER ORDER MANAGEMENT SAAS
+// PostgreSQL + Prisma
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum ProductStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum CustomerStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  PROCESSING
+  READY_TO_SHIP
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  FAILED_DELIVERY
+  RETURNED
+}
+
+enum PaymentMethod {
+  COD
+  CASH
+  BANK_TRANSFER
+  EASYPAISA
+  JAZZCASH
+  CARD
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum DeliveryStatus {
+  PENDING
+  READY_TO_SHIP
+  SHIPPED
+  DELIVERED
+  FAILED
+  RETURNED
+}
+
+enum InventoryTransactionType {
+  RESTOCK
+  SALE
+  RETURN
+  ADJUSTMENT
+  DAMAGE
+}
+
+// ✅ NEW ENUM for Invitation
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+// ============================================================
+// BUSINESS / TENANT
+// ============================================================
+
+model Business {
+  id String @id @default(uuid()) @db.Uuid
+
+  name    String  @db.VarChar(150)
+  phone   String? @db.VarChar(30)
+  email   String? @db.VarChar(255)
+  address String? @db.VarChar(500)
+  logoUrl String? @db.VarChar(1000)
+
+  currency String @default("PKR") @db.Char(3)
+  timezone String @default("Asia/Karachi") @db.VarChar(100)
+
+  ownerId String? @unique @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner User? @relation("BusinessOwner", fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  users                 User[]                 @relation("BusinessUsers")
+  customers             Customer[]
+  products              Product[]
+  orders                Order[]
+  payments              Payment[]
+  deliveries            Delivery[]
+  inventoryTransactions InventoryTransaction[]
+  invitations           Invitation[] // ✅ NEW
+
+  @@index([name])
+  @@index([createdAt])
+}
+
+// ============================================================
+// USERS / AUTHENTICATION
+// ============================================================
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+
+  businessId String @db.Uuid
+
+  name         String @db.VarChar(120)
+  email        String @unique @db.VarChar(255)
+  passwordHash String @db.VarChar(255)
+
+  role   UserRole   @default(STAFF)
+  status UserStatus @default(ACTIVE)
+
+  lastLoginAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation("BusinessUsers", fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  ownedBusiness Business? @relation("BusinessOwner")
+
+  refreshTokens RefreshToken[]
+
+  @@index([businessId])
+  @@index([businessId, role])
+  @@index([businessId, status])
+}
+
+// ============================================================
+// REFRESH TOKENS
+// ============================================================
+
+model RefreshToken {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+
+  tokenHash String @unique @db.VarChar(255)
+
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+// ============================================================
+// INVITATIONS  ✅ NEW MODEL
+// ============================================================
+
+model Invitation {
+  id String @id @default(uuid()) @db.Uuid
+
+  businessId String @db.Uuid
+  invitedBy  String @db.Uuid
+
+  email String   @db.VarChar(255)
+  name  String   @db.VarChar(120)
+  role  UserRole @default(STAFF)
+
+  tokenHash String           @unique @db.VarChar(255)
+  status    InvitationStatus @default(PENDING)
+
+  expiresAt  DateTime
+  acceptedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([businessId])
+  @@index([email])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([businessId, status])
+}
+
+// ============================================================
+// CUSTOMERS
+// ============================================================
+
+model Customer {
+  id String @id @default(uuid()) @db.Uuid
+
+  businessId String @db.Uuid
+
+  name  String  @db.VarChar(120)
+  phone String  @db.VarChar(30)
+  email String? @db.VarChar(255)
+
+  address String? @db.VarChar(500)
+  city    String? @db.VarChar(100)
+
+  notes String? @db.VarChar(2000)
+
+  status CustomerStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  orders Order[]
+
+  @@unique([businessId, phone])
+  @@index([businessId])
+  @@index([businessId, name])
+  @@index([businessId, status])
+}
+
+// ============================================================
+// PRODUCTS
+// ============================================================
+
+model Product {
+  id String @id @default(uuid()) @db.Uuid
+
+  businessId String @db.Uuid
+
+  name        String  @db.VarChar(150)
+  sku         String? @db.VarChar(100)
+  description String? @db.VarChar(2000)
+
+  category String? @db.VarChar(100)
+
+  price     Decimal  @db.Decimal(12, 2)
+  costPrice Decimal? @db.Decimal(12, 2)
+
+  currentStock      Int @default(0)
+  lowStockThreshold Int @default(5)
+
+  status ProductStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  orderItems            OrderItem[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@unique([businessId, sku])
+  @@index([businessId])
+  @@index([businessId, name])
+  @@index([businessId, category])
+  @@index([businessId, status])
+  @@index([businessId, currentStock])
+}
+
+// ============================================================
+// ORDERS
+// ============================================================
+
+model Order {
+  id String @id @default(uuid()) @db.Uuid
+
+  businessId String @db.Uuid
+  customerId String @db.Uuid
+
+  orderNumber String @db.VarChar(50)
+
+  status OrderStatus @default(NEW)
+
+  subtotal    Decimal @db.Decimal(12, 2)
+  discount    Decimal @default(0) @db.Decimal(12, 2)
+  deliveryFee Decimal @default(0) @db.Decimal(12, 2)
+  total       Decimal @db.Decimal(12, 2)
+
+  paymentMethod PaymentMethod @default(COD)
+  paymentStatus PaymentStatus @default(PENDING)
+
+  deliveryAddress String? @db.VarChar(500)
+  deliveryCity    String? @db.VarChar(100)
+
+  customerName  String @db.VarChar(120)
+  customerPhone String @db.VarChar(30)
+
+  notes String? @db.VarChar(2000)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  confirmedAt DateTime?
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+  cancelledAt DateTime?
+  returnedAt  DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  items OrderItem[]
+
+  payments Payment[]
+
+  delivery Delivery?
+
+  inventoryTransactions InventoryTransaction[]
+
+  @@unique([businessId, orderNumber])
+  @@index([businessId])
+  @@index([businessId, status])
+  @@index([businessId, customerId])
+  @@index([businessId, paymentStatus])
+  @@index([businessId, createdAt])
+}
+
+// ============================================================
+// ORDER ITEMS
+// ============================================================
+
+model OrderItem {
+  id String @id @default(uuid()) @db.Uuid
+
+  orderId   String @db.Uuid
+  productId String @db.Uuid
+
+  quantity Int
+
+  unitPrice  Decimal @db.Decimal(12, 2)
+  totalPrice Decimal @db.Decimal(12, 2)
+
+  productName String  @db.VarChar(150)
+  sku         String? @db.VarChar(100)
+
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// ============================================================
+// PAYMENTS
+// ============================================================
+
+model Payment {
+  id String @id @default(uuid()) @db.Uuid
+
+  businessId String @db.Uuid
+  orderId    String @db.Uuid
+
+  amount Decimal @db.Decimal(12, 2)
+
+  method PaymentMethod
+  status PaymentStatus @default(PENDING)
+
+  reference String? @db.VarChar(150)
+  notes     String? @db.VarChar(1000)
+
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([businessId])
+  @@index([businessId, orderId])
+  @@index([businessId, status])
+  @@index([businessId, createdAt])
+}
+
+// ============================================================
+// DELIVERIES
+// ============================================================
+
+model Delivery {
+  id String @id @default(uuid()) @db.Uuid
+
+  businessId String @db.Uuid
+  orderId    String @unique @db.Uuid
+
+  courier        String? @db.VarChar(100)
+  trackingNumber String? @db.VarChar(150)
+
+  status DeliveryStatus @default(PENDING)
+
+  deliveryFee Decimal @default(0) @db.Decimal(12, 2)
+
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+  failedAt    DateTime?
+  returnedAt  DateTime?
+
+  notes String? @db.VarChar(1000)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([businessId])
+  @@index([businessId, status])
+  @@index([businessId, trackingNumber])
+}
+
+// ============================================================
+// INVENTORY TRANSACTIONS
+// ============================================================
+
+model InventoryTransaction {
+  id String @id @default(uuid()) @db.Uuid
+
+  businessId String  @db.Uuid
+  productId  String  @db.Uuid
+  orderId    String? @db.Uuid
+
+  type InventoryTransactionType
+
+  quantity Int
+
+  previousStock Int
+  newStock      Int
+
+  reason String? @db.VarChar(500)
+
+  createdAt DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([businessId])
+  @@index([businessId, productId])
+  @@index([businessId, orderId])
+  @@index([businessId, type])
+  @@index([businessId, createdAt])
+}
