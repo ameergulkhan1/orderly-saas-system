@@ -9,7 +9,6 @@ import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { corsOptions } from './config/cors';
 import { securityConfig } from './config/security';
 import { logger } from './config/logger';
-// Remove this: import { env } from './config/env';
 
 const app = express();
 
