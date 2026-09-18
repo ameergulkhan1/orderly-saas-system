@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import type { UserRole } from '@prisma/client';
 
 export class BusinessRepository {
   constructor(private prisma: PrismaClient) {}
@@ -37,8 +38,16 @@ export class BusinessRepository {
     });
   }
 
-  async create(data: { name: string; phone: string; email?: string; address?: string; ownerId: string }) {
-    return this.prisma.business.create({ data });
+  async create(data: {
+    name: string;
+    phone: string;
+    email?: string;
+    address?: string;
+    ownerId: string;
+  }) {
+    return this.prisma.business.create({
+      data
+    });
   }
 
   async update(id: string, data: any) {
@@ -48,7 +57,10 @@ export class BusinessRepository {
     });
   }
 
-  async getUserInBusiness(userId: string, businessId: string) {
+  async getUserInBusiness(
+    userId: string,
+    businessId: string
+  ) {
     return this.prisma.user.findFirst({
       where: {
         id: userId,
@@ -57,27 +69,47 @@ export class BusinessRepository {
     });
   }
 
-  async updateUserRole(userId: string, role: string) {
+  async updateUserRole(
+    userId: string,
+    role: UserRole
+  ) {
     return this.prisma.user.update({
       where: { id: userId },
-      data: { role }
+      data: {
+        role
+      }
     });
   }
 
   async removeUserFromBusiness(userId: string) {
+    // businessId is required in the Prisma schema,
+    // so the user cannot be disconnected by setting it to null.
+    // Use a suspended status instead.
     return this.prisma.user.update({
       where: { id: userId },
-      data: { businessId: null }
+      data: {
+        status: 'SUSPENDED'
+      }
     });
   }
 
   async getBusinessStats(businessId: string) {
     const [customers, products, orders] = await Promise.all([
-      this.prisma.customer.count({ where: { businessId } }),
-      this.prisma.product.count({ where: { businessId } }),
-      this.prisma.order.count({ where: { businessId } })
+      this.prisma.customer.count({
+        where: { businessId }
+      }),
+      this.prisma.product.count({
+        where: { businessId }
+      }),
+      this.prisma.order.count({
+        where: { businessId }
+      })
     ]);
 
-    return { customers, products, orders };
+    return {
+      customers,
+      products,
+      orders
+    };
   }
 }

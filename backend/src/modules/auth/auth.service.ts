@@ -369,7 +369,7 @@ export class AuthService {
       user?.role || 'STAFF'
     );
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: { refreshToken: { update: (arg0: { where: { id: any; }; data: { revokedAt: Date; }; }) => any; create: (arg0: { data: { userId: string; tokenHash: string; expiresAt: Date; }; }) => any; }; }) => {
       await tx.refreshToken.update({
         where: { id: matchedToken!.id },
         data: { revokedAt: new Date() }

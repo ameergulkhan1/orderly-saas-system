@@ -6,7 +6,18 @@ type UserStatus = 'ACTIVE' | 'INVITED' | 'SUSPENDED';
 export class BusinessService {
   constructor(private prisma: PrismaClient) {}
 
-  async createBusiness(userId: string, data: { name: string; phone: string; email?: string; address?: string }) {
+  /**
+   * Create a new business and attach it to the user.
+   */
+  async createBusiness(
+    userId: string,
+    data: {
+      name: string;
+      phone: string;
+      email?: string;
+      address?: string;
+    }
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId }
     });
@@ -35,238 +46,356 @@ export class BusinessService {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { businessId: business.id }
+      data: {
+        businessId: business.id
+      }
     });
 
     return business;
   }
 
+  /**
+   * Get all businesses owned by a user.
+   */
   async getBusinesses(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: { business: true }
+    return this.prisma.business.findMany({
+      where: {
+        ownerId: userId
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
     });
-
-    if (!user) {
-      throw new HttpError(404, 'User not found');
-    }
-
-    return user.business;
   }
 
-  async getBusinessById(id: string, userId: string) {
-    const business = await this.prisma.business.findUnique({
-      where: { id },
-      include: {
-        owner: true,
-        users: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            status: true,
-            lastLoginAt: true,
-            createdAt: true
-          }
-        },
-        _count: {
-          select: {
-            customers: true,
-            products: true,
-            orders: true
-          }
-        }
+  /**
+   * Get a specific business.
+   */
+  async getBusinessById(businessId: string, userId: string) {
+    const business = await this.prisma.business.findFirst({
+      where: {
+        id: businessId,
+        ownerId: userId
       }
     });
 
     if (!business) {
       throw new HttpError(404, 'Business not found');
-    }
-
-    const hasAccess = await this.prisma.user.findFirst({
-      where: {
-        id: userId,
-        businessId: id
-      }
-    });
-
-    if (!hasAccess && business.ownerId !== userId) {
-      throw new HttpError(403, 'Access denied');
     }
 
     return business;
   }
 
-  async updateBusiness(id: string, userId: string, data: any) {
-    const business = await this.prisma.business.findUnique({
-      where: { id }
+  /**
+   * Update business information.
+   */
+  async updateBusiness(
+    businessId: string,
+    userId: string,
+    data: {
+      name?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+    }
+  ) {
+    const business = await this.prisma.business.findFirst({
+      where: {
+        id: businessId,
+        ownerId: userId
+      }
     });
 
     if (!business) {
       throw new HttpError(404, 'Business not found');
-    }
-
-    if (business.ownerId !== userId) {
-      throw new HttpError(403, 'Only owner can update business details');
     }
 
     return this.prisma.business.update({
-      where: { id },
+      where: {
+        id: businessId
+      },
       data
     });
   }
 
-  async getBusinessUsers(id: string, userId: string) {
-    const business = await this.prisma.business.findUnique({
-      where: { id }
-    });
-
-    if (!business) {
-      throw new HttpError(404, 'Business not found');
-    }
-
-    const hasAccess = await this.prisma.user.findFirst({
+  /**
+   * Get users belonging to a business.
+   */
+  async getBusinessUsers(
+    businessId: string,
+    currentUserId: string
+  ) {
+    const currentUser = await this.prisma.user.findUnique({
       where: {
-        id: userId,
-        businessId: id
+        id: currentUserId
       }
     });
 
-    if (!hasAccess && business.ownerId !== userId) {
-      throw new HttpError(403, 'Access denied');
+    if (
+      !currentUser ||
+      currentUser.businessId !== businessId
+    ) {
+      throw new HttpError(403, 'You do not have access to this business');
     }
 
     return this.prisma.user.findMany({
-      where: { businessId: id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        status: true,
-        lastLoginAt: true,
-        createdAt: true
-      }
-    });
-  }
-
-  async getBusinessSettings(id: string, userId: string) {
-    const business = await this.prisma.business.findUnique({
-      where: { id }
-    });
-
-    if (!business) {
-      throw new HttpError(404, 'Business not found');
-    }
-
-    const hasAccess = await this.prisma.user.findFirst({
       where: {
-        id: userId,
-        businessId: id
+        businessId
+      },
+      orderBy: {
+        createdAt: 'asc'
       }
     });
-
-    if (!hasAccess && business.ownerId !== userId) {
-      throw new HttpError(403, 'Access denied');
-    }
-
-    return {
-      name: business.name,
-      phone: business.phone,
-      email: business.email,
-      address: business.address,
-      logoUrl: business.logoUrl,
-      currency: business.currency,
-      timezone: business.timezone
-    };
   }
 
-  async inviteUser(businessId: string, userId: string, data: { email: string; role: UserRole; name: string }) {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId }
+  /**
+   * Get business settings.
+   */
+  async getBusinessSettings(
+    businessId: string,
+    userId: string
+  ) {
+    const business = await this.prisma.business.findFirst({
+      where: {
+        id: businessId,
+        ownerId: userId
+      }
     });
 
     if (!business) {
       throw new HttpError(404, 'Business not found');
     }
 
-    if (business.ownerId !== userId) {
-      throw new HttpError(403, 'Only owner can invite users');
+    return business;
+  }
+
+  /**
+   * Invite a new user to the business.
+   */
+  async inviteUser(
+    businessId: string,
+    userId: string,
+    data: {
+      email: string;
+      role: UserRole;
+      name: string;
+    }
+  ) {
+    const currentUser = await this.prisma.user.findUnique({
+      where: {
+        id: userId
+      }
+    });
+
+    if (!currentUser) {
+      throw new HttpError(404, 'User not found');
     }
 
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: data.email }
+    if (currentUser.businessId !== businessId) {
+      throw new HttpError(
+        403,
+        'You do not have access to this business'
+      );
+    }
+
+    if (
+      currentUser.role !== UserRole.OWNER &&
+      currentUser.role !== UserRole.ADMIN
+    ) {
+      throw new HttpError(
+        403,
+        'Only owners and admins can invite users'
+      );
+    }
+
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        email: data.email,
+        businessId
+      }
     });
 
     if (existingUser) {
-      throw new HttpError(409, 'User already exists');
+      throw new HttpError(
+        409,
+        'A user with this email already exists in this business'
+      );
     }
 
+    // TODO:
+    // Replace this temporary token with a proper invitation
+    // system and email delivery when implemented.
     const inviteToken = `invite-${Date.now()}`;
 
     return {
       message: 'Invitation sent',
       inviteToken,
-      email: data.email
+      email: data.email,
+      name: data.name,
+      role: data.role
     };
   }
 
-  async updateUserRole(businessId: string, currentUserId: string, targetUserId: string, data: { role: UserRole }) {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId }
+  /**
+   * Update a user's role.
+   */
+  async updateUserRole(
+    businessId: string,
+    currentUserId: string,
+    targetUserId: string,
+    data: {
+      role: UserRole;
+    }
+  ) {
+    const currentUser = await this.prisma.user.findUnique({
+      where: {
+        id: currentUserId
+      }
     });
 
-    if (!business) {
-      throw new HttpError(404, 'Business not found');
+    if (!currentUser) {
+      throw new HttpError(404, 'Current user not found');
     }
 
-    if (business.ownerId !== currentUserId) {
-      throw new HttpError(403, 'Only owner can change user roles');
+    if (currentUser.businessId !== businessId) {
+      throw new HttpError(
+        403,
+        'You do not have access to this business'
+      );
     }
 
-    if (targetUserId === business.ownerId) {
-      throw new HttpError(400, 'Cannot change owner role');
+    if (
+      currentUser.role !== UserRole.OWNER &&
+      currentUser.role !== UserRole.ADMIN
+    ) {
+      throw new HttpError(
+        403,
+        'Only owners and admins can update user roles'
+      );
     }
 
-    const user = await this.prisma.user.findFirst({
+    const targetUser = await this.prisma.user.findFirst({
       where: {
         id: targetUserId,
         businessId
       }
     });
 
-    if (!user) {
-      throw new HttpError(404, 'User not found in this business');
+    if (!targetUser) {
+      throw new HttpError(
+        404,
+        'Target user not found in this business'
+      );
+    }
+
+    // Prevent an admin from changing the owner's role.
+    if (
+      targetUser.role === UserRole.OWNER &&
+      currentUser.role !== UserRole.OWNER
+    ) {
+      throw new HttpError(
+        403,
+        'Only the owner can modify the owner account'
+      );
+    }
+
+    // Only the owner can assign OWNER role.
+    if (
+      data.role === UserRole.OWNER &&
+      currentUser.role !== UserRole.OWNER
+    ) {
+      throw new HttpError(
+        403,
+        'Only the owner can assign the OWNER role'
+      );
     }
 
     return this.prisma.user.update({
-      where: { id: targetUserId },
-      data: { role: data.role }
+      where: {
+        id: targetUserId
+      },
+      data: {
+        role: data.role
+      }
     });
   }
 
-  async removeUser(businessId: string, currentUserId: string, targetUserId: string) {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId }
+  /**
+   * Remove a user from active business access.
+   *
+   * The user is soft-removed by changing their status
+   * to SUSPENDED instead of setting businessId to null.
+   */
+  async removeUser(
+    businessId: string,
+    currentUserId: string,
+    targetUserId: string
+  ) {
+    const currentUser = await this.prisma.user.findUnique({
+      where: {
+        id: currentUserId
+      }
     });
 
-    if (!business) {
-      throw new HttpError(404, 'Business not found');
+    if (!currentUser) {
+      throw new HttpError(404, 'Current user not found');
     }
 
-    if (business.ownerId !== currentUserId) {
-      throw new HttpError(403, 'Only owner can remove users');
+    if (currentUser.businessId !== businessId) {
+      throw new HttpError(
+        403,
+        'You do not have access to this business'
+      );
     }
 
-    if (targetUserId === business.ownerId) {
-      throw new HttpError(400, 'Cannot remove owner');
+    if (
+      currentUser.role !== UserRole.OWNER &&
+      currentUser.role !== UserRole.ADMIN
+    ) {
+      throw new HttpError(
+        403,
+        'Only owners and admins can remove users'
+      );
     }
 
-    // ✅ FIX: Set status to SUSPENDED instead of setting businessId to null
+    const targetUser = await this.prisma.user.findFirst({
+      where: {
+        id: targetUserId,
+        businessId
+      }
+    });
+
+    if (!targetUser) {
+      throw new HttpError(
+        404,
+        'Target user not found in this business'
+      );
+    }
+
+    // Prevent removing the owner.
+    if (targetUser.role === UserRole.OWNER) {
+      throw new HttpError(
+        403,
+        'The business owner cannot be removed'
+      );
+    }
+
+    // Prevent an admin from removing another admin.
+    if (
+      targetUser.role === UserRole.ADMIN &&
+      currentUser.role !== UserRole.OWNER
+    ) {
+      throw new HttpError(
+        403,
+        'Only the owner can remove an admin'
+      );
+    }
+
     return this.prisma.user.update({
-      where: { id: targetUserId },
-      data: { 
+      where: {
+        id: targetUserId
+      },
+      data: {
         status: 'SUSPENDED'
       }
     });
