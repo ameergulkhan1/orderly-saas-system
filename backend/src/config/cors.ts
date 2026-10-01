@@ -12,7 +12,7 @@ export const corsOptions = {
 
     // Check if origin is allowed
     const allowedOrigins = env.NODE_ENV === 'production'
-      ? env.CORS_ORIGIN?.split(',') || ['https://yourdomain.com']
+      ? env.CORS_ORIGIN?.split(',') || ['https://orderly-saas-system.vercel.app']
       : ['http://localhost:3000', 'http://localhost:3001'];
 
     if (allowedOrigins.indexOf(origin) !== -1) {
