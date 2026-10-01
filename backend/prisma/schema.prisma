@@ -12,6 +12,7 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
 // ============================================================
 // ENUMS
 // ============================================================
@@ -106,8 +107,12 @@ model Business {
   address String? @db.VarChar(500)
   logoUrl String? @db.VarChar(1000)
 
+  category String? @db.VarChar(100) // ← new: "clothing", "cosmetics", …
+
   currency String @default("PKR") @db.Char(3)
   timezone String @default("Asia/Karachi") @db.VarChar(100)
+
+  onboardingCompletedAt DateTime? // ← new: null = not yet done
 
   ownerId String? @unique @db.Uuid
 
@@ -123,7 +128,7 @@ model Business {
   payments              Payment[]
   deliveries            Delivery[]
   inventoryTransactions InventoryTransaction[]
-  invitations           Invitation[] // ✅ NEW
+  invitations           Invitation[]
 
   @@index([name])
   @@index([createdAt])

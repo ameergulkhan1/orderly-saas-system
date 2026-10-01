@@ -1,0 +1,11 @@
+{
+  "remoteName": "origin",
+  "projects": [
+    {
+      "id": "prj_fUdNU370VT3pgOAh3hNk3cQSu1I7",
+      "name": "orderly-saas-system",
+      "directory": "backend",
+      "orgId": "team_A5BFBSMVyH5GWbonAzasKttF"
+    }
+  ]
+}

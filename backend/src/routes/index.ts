@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import aiRoutes from '../modules/ai/ai.routes';
 import authRoutes from '../modules/auth/auth.routes';
+import onboardingRoutes from '../modules/onboarding/onboarding.routes';
 import businessRoutes from '../modules/businesses/business.routes';
 import userRoutes from '../modules/users/user.routes';
 import customerRoutes from '../modules/customers/customer.routes';
@@ -19,9 +21,11 @@ const API_VERSION = '/api/v1';
 // All routes
 router.use(`${API_VERSION}/auth`, authRoutes);
 router.use(`${API_VERSION}/business`, businessRoutes);
+router.use(`${API_VERSION}/onboarding`, onboardingRoutes);
 router.use(`${API_VERSION}/users`, userRoutes);
 router.use(`${API_VERSION}/customers`, customerRoutes);
 router.use(`${API_VERSION}/products`, productRoutes);
+router.use(`${API_VERSION}/ai`, aiRoutes);
 router.use(`${API_VERSION}/inventory`, inventoryRoutes);
 router.use(`${API_VERSION}/orders`, orderRoutes);
 router.use(`${API_VERSION}/payments`, paymentRoutes);
