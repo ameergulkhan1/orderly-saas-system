@@ -4,7 +4,7 @@
   "description": "Orderly - Seller Order Management SaaS Backend",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon src/server.ts",
+    "dev": "nodemon --exec \"ts-node --files\" src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "clean": "rm -rf dist",
@@ -62,8 +62,13 @@
     "typescript": "^5.6.3",
     "vitest": "^2.1.2"
   },
+  
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
+  },
+
+  "overrides": {
+    "jose": "5.10.0"
   },
   "keywords": [
     "saas",
