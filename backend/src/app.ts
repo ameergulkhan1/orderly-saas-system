@@ -4,7 +4,10 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { json, urlencoded } from 'express';
 import routes from './routes';
-import { errorMiddleware, notFoundMiddleware } from './middleware/error.middleware';
+import {
+  errorMiddleware,
+  notFoundMiddleware,
+} from './middleware/error.middleware';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { corsOptions } from './config/cors';
 import { securityConfig } from './config/security';
@@ -13,18 +16,29 @@ import { logger } from './config/logger';
 const app = express();
 
 app.use(requestIdMiddleware);
+
 app.use(helmet(securityConfig.helmet));
+
 app.use(cors(corsOptions));
+
 app.use(compression());
-app.use(json({ limit: securityConfig.requestSize.json }));
-app.use(urlencoded({ 
-  extended: true, 
-  limit: securityConfig.requestSize.urlencoded 
-}));
+
+app.use(
+  json({
+    limit: securityConfig.requestSize.json,
+  })
+);
+
+app.use(
+  urlencoded({
+    extended: true,
+    limit: securityConfig.requestSize.urlencoded,
+  })
+);
 
 app.use((req: any, res: any, next: any) => {
   const startTime = Date.now();
-  
+
   logger.info({
     requestId: req.requestId,
     method: req.method,
@@ -35,6 +49,7 @@ app.use((req: any, res: any, next: any) => {
 
   res.on('finish', () => {
     const duration = Date.now() - startTime;
+
     logger.info({
       requestId: req.requestId,
       method: req.method,
@@ -49,9 +64,24 @@ app.use((req: any, res: any, next: any) => {
   next();
 });
 
+/**
+ * Health check
+ * Used to verify that the Express application
+ * is running correctly on Vercel.
+ */
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    success: true,
+    service: 'orderly-backend',
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.use('/', routes);
 
 app.use(notFoundMiddleware);
+
 app.use(errorMiddleware);
 
 export default app;
