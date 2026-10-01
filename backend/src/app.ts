@@ -3,11 +3,14 @@ import compression from 'compression';
 import cors from 'cors';
 import helmet from 'helmet';
 import { json, urlencoded } from 'express';
+
 import routes from './routes';
+
 import {
   errorMiddleware,
   notFoundMiddleware,
 } from './middleware/error.middleware';
+
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { corsOptions } from './config/cors';
 import { securityConfig } from './config/security';
@@ -15,14 +18,26 @@ import { logger } from './config/logger';
 
 const app = express();
 
+// --------------------------------------------------
+// Request ID
+// --------------------------------------------------
 app.use(requestIdMiddleware);
 
+// --------------------------------------------------
+// Security
+// --------------------------------------------------
 app.use(helmet(securityConfig.helmet));
 
 app.use(cors(corsOptions));
 
+// --------------------------------------------------
+// Compression
+// --------------------------------------------------
 app.use(compression());
 
+// --------------------------------------------------
+// Body parsing
+// --------------------------------------------------
 app.use(
   json({
     limit: securityConfig.requestSize.json,
@@ -36,6 +51,9 @@ app.use(
   })
 );
 
+// --------------------------------------------------
+// Request logging
+// --------------------------------------------------
 app.use((req: any, res: any, next: any) => {
   const startTime = Date.now();
 
@@ -64,11 +82,20 @@ app.use((req: any, res: any, next: any) => {
   next();
 });
 
-/**
- * Health check
- * Used to verify that the Express application
- * is running correctly on Vercel.
- */
+// --------------------------------------------------
+// API root
+// --------------------------------------------------
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    success: true,
+    service: 'orderly-backend',
+    message: 'Orderly API is running',
+  });
+});
+
+// --------------------------------------------------
+// Health check
+// --------------------------------------------------
 app.get('/health', (_req, res) => {
   res.status(200).json({
     success: true,
@@ -78,10 +105,19 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// --------------------------------------------------
+// API routes
+// --------------------------------------------------
 app.use('/', routes);
 
+// --------------------------------------------------
+// 404 handler
+// --------------------------------------------------
 app.use(notFoundMiddleware);
 
+// --------------------------------------------------
+// Global error handler
+// --------------------------------------------------
 app.use(errorMiddleware);
 
 export default app;
