@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Header } from "@/components/dashboard/Header";
+import { AIChatButton } from "@/components/ai/AIChatButton";
 
 export default function DashboardLayout({
   children,
@@ -23,6 +24,9 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+
+      {/* AI chat — only inside the dashboard, never on public pages */}
+      <AIChatButton />
     </div>
   );
 }

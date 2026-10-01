@@ -280,19 +280,48 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 // ============================================================
-// Redirect to login (single entry point)
+// Redirect to login (single entry point, loop-safe)
 // ============================================================
 
 let isRedirecting = false;
 
+/**
+ * Auth pages: paths where a 401 must NOT trigger a redirect
+ * (otherwise: /login → 401 → /login?redirect=... → 401 → ...)
+ */
+const AUTH_PATHS = ["/login", "/register", "/forgot-password", "/reset-password"];
+
+function isOnAuthPath(path: string): boolean {
+  return AUTH_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
+}
+
 function redirectToLogin(): void {
-  if (!canUseStorage() || isRedirecting) return;
+  if (!canUseStorage()) return;
+
+  // Already in-flight from a previous 401 → don't stack more redirects
+  if (isRedirecting) return;
+
+  const currentPath = window.location.pathname;
+
+  // Already on an auth page → 401 here is expected; do NOT redirect
+  if (isOnAuthPath(currentPath)) {
+    return;
+  }
+
   isRedirecting = true;
   clearTokens();
 
-  const current = window.location.pathname + window.location.search;
-  const loginUrl = `/login?redirect=${encodeURIComponent(current)}`;
+  // Preserve intended destination, but do NOT double-encode if it's
+  // already carrying a `redirect=` param from a previous loop.
+  const current = currentPath + window.location.search;
 
+  if (current.includes("redirect=")) {
+    // Stripping the old param prevents the %25... explosion
+    window.location.href = "/login";
+    return;
+  }
+
+  const loginUrl = `/login?redirect=${encodeURIComponent(current)}`;
   window.location.href = loginUrl;
 }
 
@@ -442,6 +471,12 @@ export async function apiFetch<T = unknown>(
         code: isTimeout ? "TIMEOUT" : "NETWORK_ERROR",
       },
     };
+  }
+
+  // Reset the redirect flag on ANY successful response.
+  // This is what unlocks the client after login / refresh / public endpoint.
+  if (res.ok) {
+    isRedirecting = false;
   }
 
   // ---------- Handle 401 with single retry ----------

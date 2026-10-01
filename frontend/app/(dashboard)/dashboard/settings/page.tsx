@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ type TabType =
   | "billing"
   | "security";
 
-export default function SettingsPage() {
+function SettingsPageContent()  {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as TabType) ?? "general";
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
@@ -954,5 +954,18 @@ function SecuritySettings() {
         </Button>
       </div>
     </div>
+  );
+  
+}export default function SettingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6">
+          <p className="text-sm text-gray-500">Loading settings...</p>
+        </div>
+      }
+    >
+      <SettingsPageContent />
+    </Suspense>
   );
 }

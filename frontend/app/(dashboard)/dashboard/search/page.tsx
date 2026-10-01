@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Search, Package, User, ShoppingBag } from "lucide-react";
@@ -11,7 +11,7 @@ import type { Order, Customer, Product } from "@/lib/api/types";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
-export default function SearchPage() {
+function SearchPageContent() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get("q") ?? "";
 
@@ -23,13 +23,11 @@ export default function SearchPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Debounce the query (300ms)
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 300);
     return () => clearTimeout(t);
   }, [query]);
 
-  // Fetch results when debounced query changes
   useEffect(() => {
     if (!debounced) {
       setOrders([]);
@@ -46,6 +44,7 @@ export default function SearchPage() {
           customersAPI.list({ search: debounced, limit: 5 }),
           productsAPI.list({ search: debounced, limit: 5 }),
         ]);
+
         if (o.success) setOrders(o.data);
         if (c.success) setCustomers(c.data);
         if (p.success) setProducts(p.data);
@@ -53,6 +52,7 @@ export default function SearchPage() {
         setLoading(false);
       }
     };
+
     load();
   }, [debounced]);
 
@@ -71,6 +71,7 @@ export default function SearchPage() {
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
         <Input
           autoFocus
           value={query}
@@ -84,13 +85,13 @@ export default function SearchPage() {
         <p className="text-sm text-gray-500">Searching...</p>
       )}
 
-      {/* Orders */}
       {orders.length > 0 && (
         <section className="rounded-xl border bg-white shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 border-b bg-gray-50 px-6 py-3">
             <ShoppingBag className="h-4 w-4 text-blue-600" />
             <h2 className="font-semibold text-gray-900">Orders</h2>
           </div>
+
           <ul className="divide-y">
             {orders.map((o) => (
               <li key={o.id}>
@@ -99,15 +100,20 @@ export default function SearchPage() {
                   className="flex items-center justify-between px-6 py-3 hover:bg-gray-50"
                 >
                   <div>
-                    <p className="font-medium text-gray-900">#{o.orderNumber}</p>
+                    <p className="font-medium text-gray-900">
+                      #{o.orderNumber}
+                    </p>
+
                     <p className="text-sm text-gray-500">
                       {o.customerName ?? "Unknown"}
                     </p>
                   </div>
+
                   <div className="text-right">
                     <p className="font-semibold text-gray-900">
                       Rs. {Number(o.total).toLocaleString()}
                     </p>
+
                     <Badge className="mt-1 bg-gray-100 text-gray-700 border-0">
                       {o.status}
                     </Badge>
@@ -119,13 +125,13 @@ export default function SearchPage() {
         </section>
       )}
 
-      {/* Customers */}
       {customers.length > 0 && (
         <section className="rounded-xl border bg-white shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 border-b bg-gray-50 px-6 py-3">
             <User className="h-4 w-4 text-purple-600" />
             <h2 className="font-semibold text-gray-900">Customers</h2>
           </div>
+
           <ul className="divide-y">
             {customers.map((c) => (
               <li key={c.id}>
@@ -144,13 +150,13 @@ export default function SearchPage() {
         </section>
       )}
 
-      {/* Products */}
       {products.length > 0 && (
         <section className="rounded-xl border bg-white shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 border-b bg-gray-50 px-6 py-3">
             <Package className="h-4 w-4 text-green-600" />
             <h2 className="font-semibold text-gray-900">Products</h2>
           </div>
+
           <ul className="divide-y">
             {products.map((p) => (
               <li key={p.id}>
@@ -160,8 +166,11 @@ export default function SearchPage() {
                 >
                   <div>
                     <p className="font-medium text-gray-900">{p.name}</p>
-                    <p className="text-sm text-gray-500">{p.sku ?? "—"}</p>
+                    <p className="text-sm text-gray-500">
+                      {p.sku ?? "—"}
+                    </p>
                   </div>
+
                   <p className="font-semibold text-gray-900">
                     Rs. {Number(p.price).toLocaleString()}
                   </p>
@@ -180,5 +189,19 @@ export default function SearchPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6">
+          <p className="text-sm text-gray-500">Loading search...</p>
+        </div>
+      }
+    >
+      <SearchPageContent />
+    </Suspense>
   );
 }
