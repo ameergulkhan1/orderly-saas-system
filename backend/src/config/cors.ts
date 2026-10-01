@@ -1,33 +1,64 @@
-import cors from 'cors';
-import { securityConfig } from './security';
+import { CorsOptions } from 'cors';
 import { env } from './env';
 
-// CORS middleware configuration
-export const corsOptions = {
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
+const allowedOrigins =
+  env.NODE_ENV === 'production'
+    ? [
+        ...(env.CORS_ORIGIN
+          ? env.CORS_ORIGIN
+              .split(',')
+              .map((origin) => origin.trim())
+              .filter(Boolean)
+          : []),
+
+        'https://orderly-saas-system.vercel.app',
+      ]
+    : ['http://localhost:3000', 'http://localhost:3001'];
+
+export const corsOptions: CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests without an Origin header
     if (!origin) {
-      return callback(null, true);
-    }
-
-    // Check if origin is allowed
-    const allowedOrigins = env.NODE_ENV === 'production'
-      ? env.CORS_ORIGIN?.split(',') || ['https://orderly-saas-system.vercel.app']
-      : ['http://localhost:3000', 'http://localhost:3001'];
-
-    if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
-    } else {
-      callback(new Error(`Origin ${origin} not allowed by CORS`), false);
+      return;
     }
-  },
-  credentials: securityConfig.cors.credentials,
-  optionsSuccessStatus: securityConfig.cors.optionsSuccessStatus,
-  methods: securityConfig.cors.methods,
-  allowedHeaders: securityConfig.cors.allowedHeaders,
-  exposedHeaders: securityConfig.cors.exposedHeaders,
-  maxAge: securityConfig.cors.maxAge,
-};
 
-// Pre-flight request handler
-export const corsMiddleware = cors(corsOptions);
+    // Allow explicitly configured origins
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    // Allow Orderly Vercel preview deployments
+    if (
+      origin.startsWith('https://orderly-saas-system-') &&
+      origin.endsWith('-ameergulkhan1s-projects.vercel.app')
+    ) {
+      callback(null, true);
+      return;
+    }
+
+    callback(
+      new Error(`Origin [${origin}] not allowed by CORS`)
+    );
+  },
+
+  credentials: true,
+
+  methods: [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS',
+  ],
+
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+  ],
+
+  optionsSuccessStatus: 204,
+};
