@@ -16,7 +16,6 @@ import {
   XCircle,
   Eye,
   Edit,
-  TrendingUp,
 } from "lucide-react";
 
 type StockStatus = "In Stock" | "Low Stock" | "Out of Stock";
@@ -55,7 +54,9 @@ export default function InventoryPage() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState<"All" | StockStatus>("All");
+  const [selectedStatus, setSelectedStatus] = useState<"All" | StockStatus>(
+    "All"
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -286,24 +287,31 @@ export default function InventoryPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <Link href={`/dashboard/inventory/${p.id}`}>
+                          {/* 👁 Eye → Inventory detail (manage stock) */}
+                          <Link
+                            href={`/dashboard/inventory/${p.id}`}
+                            title="View inventory"
+                          >
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 rounded-full hover:bg-blue-50"
-                              title="Manage stock"
                             >
-                              <Edit className="h-4 w-4 text-blue-500" />
+                              <Eye className="h-4 w-4 text-blue-500" />
                             </Button>
                           </Link>
-                          <Link href={`/dashboard/products/${p.id}`}>
+
+                          {/* ✏️ Pencil → Product detail (edit product) */}
+                          <Link
+                            href={`/dashboard/products/${p.id}`}
+                            title="View product"
+                          >
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 rounded-full hover:bg-gray-100"
-                              title="View product"
                             >
-                              <Eye className="h-4 w-4 text-gray-400" />
+                              <Edit className="h-4 w-4 text-gray-400" />
                             </Button>
                           </Link>
                         </div>

@@ -109,6 +109,59 @@ const STATUS_LABELS: Record<string, string> = {
   RETURNED: "Returned",
 };
 
+/**
+ * Builds a WhatsApp deep link with a pre-filled order message.
+ * Converts Pakistani local numbers (03001234567) → international (923001234567).
+ */
+function buildWhatsAppLink(order: OrderDetail): string {
+  let phone = order.customer.phone.replace(/\D/g, "");
+
+  // Strip international prefix "00"
+  if (phone.startsWith("00")) phone = phone.slice(2);
+
+  // Convert Pakistani local format (03XXXXXXXXX) → (923XXXXXXXXX)
+  if (phone.startsWith("0") && phone.length === 11) {
+    phone = "92" + phone.slice(1);
+  }
+
+  const status = String(order.status).toUpperCase();
+  const statusLabel = STATUS_LABELS[status] ?? order.status;
+
+  const lines: string[] = [
+    `Hello ${order.customer.name},`,
+    "",
+    `Your order *#${order.orderNumber}* has been updated.`,
+    "",
+    `📦 *Status:* ${statusLabel}`,
+    `💰 *Total:* Rs. ${order.total.toLocaleString()}`,
+    `💵 *Paid:* Rs. ${order.payment.paid.toLocaleString()}`,
+    `⏳ *Remaining:* Rs. ${order.payment.remaining.toLocaleString()}`,
+    "",
+    "*Items:*",
+    ...order.items.map(
+      (it) =>
+        `• ${it.name}${it.size ? ` (${it.size})` : ""} × ${it.quantity} — Rs. ${it.price.toLocaleString()}`
+    ),
+    "",
+    `📍 *Delivery Address:* ${order.customer.address}`,
+    "",
+    "Thank you for shopping with us! 🙏",
+  ];
+
+  const message = lines.join("\n");
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
+/**
+ * Opens WhatsApp safely (with popup-blocker fallback).
+ */
+function openWhatsApp(url: string) {
+  const win = window.open(url, "_blank", "noopener,noreferrer");
+  if (!win) {
+    window.location.href = url;
+  }
+}
+
 export default function OrderDetailPage() {
   const params = useParams();
   const orderId = params?.id as string;
@@ -286,6 +339,11 @@ export default function OrderDetailPage() {
     }
   };
 
+  const handleSendWhatsApp = () => {
+    if (!order) return;
+    openWhatsApp(buildWhatsAppLink(order));
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -311,7 +369,6 @@ export default function OrderDetailPage() {
     );
   }
 
-  const whatsappNumber = order.customer.phone.replace(/\D/g, "");
   const nextStatuses = STATUS_FLOW[order.status.toUpperCase()] ?? [];
   const canUpdateStatus = nextStatuses.length > 0;
 
@@ -335,9 +392,7 @@ export default function OrderDetailPage() {
           <Button
             variant="outline"
             className="border-green-600 text-green-600 hover:bg-green-50"
-            onClick={() =>
-              window.open(`https://wa.me/${whatsappNumber}`, "_blank")
-            }
+            onClick={handleSendWhatsApp}
           >
             <Send className="mr-2 h-4 w-4" />
             Send WhatsApp
@@ -591,9 +646,7 @@ export default function OrderDetailPage() {
               <Button
                 variant="outline"
                 className="w-full justify-center border-blue-200 bg-white hover:bg-blue-50"
-                onClick={() =>
-                  window.open(`https://wa.me/${whatsappNumber}`, "_blank")
-                }
+                onClick={handleSendWhatsApp}
               >
                 <Send className="mr-2 h-4 w-4 text-blue-600" />
                 Send WhatsApp

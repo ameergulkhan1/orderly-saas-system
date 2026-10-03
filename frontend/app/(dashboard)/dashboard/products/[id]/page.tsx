@@ -157,8 +157,20 @@ export default function ProductDetailPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href={`/dashboard/inventory/${product.id}`}>
+            <Button
+              variant="outline"
+              className="border-purple-600 text-purple-600 hover:bg-purple-50"
+            >
+              <Boxes className="mr-2 h-4 w-4" />
+              Manage Stock
+            </Button>
+          </Link>
           <Link href={`/dashboard/products/${id}/edit`}>
-            <Button variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
+            <Button
+              variant="outline"
+              className="border-blue-600 text-blue-600 hover:bg-blue-50"
+            >
               <Edit className="mr-2 h-4 w-4" />
               Edit Product
             </Button>
@@ -187,7 +199,9 @@ export default function ProductDetailPage() {
                 <h2 className="text-2xl font-bold text-gray-900">
                   {product.name}
                 </h2>
-                <Badge className={`${stockStatus.color} border-0 flex items-center gap-1`}>
+                <Badge
+                  className={`${stockStatus.color} border-0 flex items-center gap-1`}
+                >
                   {stockStatus.icon}
                   {stockStatus.label}
                 </Badge>
@@ -237,9 +251,7 @@ export default function ProductDetailPage() {
 
       {/* Two Column Layout */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left Column */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Description */}
           <div className="rounded-xl border bg-white p-6 shadow-sm">
             <h3 className="mb-4 flex items-center text-lg font-semibold text-gray-900">
               <FileText className="mr-2 h-5 w-5 text-blue-600" />
@@ -256,7 +268,6 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          {/* Pricing Breakdown */}
           <div className="rounded-xl border bg-white p-6 shadow-sm">
             <h3 className="mb-4 flex items-center text-lg font-semibold text-gray-900">
               <DollarSign className="mr-2 h-5 w-5 text-blue-600" />
@@ -297,9 +308,7 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        {/* Right Column — Sidebar */}
         <div className="space-y-6">
-          {/* Inventory Card */}
           <div className="rounded-xl border bg-white p-6 shadow-sm">
             <h3 className="mb-4 flex items-center text-lg font-semibold text-gray-900">
               <Boxes className="mr-2 h-5 w-5 text-blue-600" />
@@ -326,10 +335,18 @@ export default function ProductDetailPage() {
                   {stockStatus.label}
                 </Badge>
               </div>
+              <Link href={`/dashboard/inventory/${product.id}`}>
+                <Button
+                  variant="outline"
+                  className="mt-2 w-full justify-center border-purple-200 bg-white hover:bg-purple-50"
+                >
+                  <Boxes className="mr-2 h-4 w-4 text-purple-600" />
+                  Manage Stock
+                </Button>
+              </Link>
             </div>
           </div>
 
-          {/* Quick Actions */}
           <div className="rounded-xl border bg-gradient-to-r from-blue-50 to-purple-50 p-6 shadow-sm">
             <h3 className="mb-3 text-sm font-medium text-gray-700">
               Quick Actions
@@ -365,7 +382,6 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
-          {/* Product Stats */}
           <div className="rounded-xl border bg-white p-6 shadow-sm">
             <h3 className="mb-4 font-semibold text-gray-900">Product Info</h3>
             <div className="space-y-3">

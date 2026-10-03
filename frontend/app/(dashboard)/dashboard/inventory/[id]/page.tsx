@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { inventoryAPI } from "@/lib/api/inventory.api";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import type { Product, InventoryTransaction } from "@/lib/api/types";
+import type { Product } from "@/lib/api/types";
 import {
   ArrowLeft,
   Package,
@@ -21,18 +21,9 @@ import {
   Minus,
   Save,
   TrendingUp,
-  TrendingDown,
   RefreshCw,
   ExternalLink,
-  PackagePlus,
-  Truck,
-  Zap,
-  History,
 } from "lucide-react";
-
-// ─────────────────────────────────────────────────────────
-// Types & helpers
-// ─────────────────────────────────────────────────────────
 
 type StockStatus = "In Stock" | "Low Stock" | "Out of Stock";
 
@@ -54,12 +45,11 @@ function deriveStockStatus(stock: number, threshold: number): StockStatus {
   return "In Stock";
 }
 
-// Matches the union in inventoryAPI.adjust exactly
 type AdjustmentType =
   | "RESTOCK"
+  | "ADJUSTMENT"
   | "SALE"
   | "RETURN"
-  | "ADJUSTMENT"
   | "DAMAGE";
 
 const ADJUSTMENT_LABELS: Record<AdjustmentType, string> = {
@@ -70,14 +60,6 @@ const ADJUSTMENT_LABELS: Record<AdjustmentType, string> = {
   DAMAGE: "Damage / Loss",
 };
 
-type ActiveMode = "add" | "set" | "adjust";
-
-const QUICK_ADD_PRESETS = [5, 10, 25, 50, 100];
-
-// ─────────────────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────────────────
-
 export default function InventoryDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -87,29 +69,13 @@ export default function InventoryDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Recent history (per-product transactions)
-  const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
-
-  // Tabs — "add" is the default because it's the most frequent action
-  const [activeMode, setActiveMode] = useState<ActiveMode>("add");
-
-  // --- Add Stock mode ---
-  const [addAmount, setAddAmount] = useState<number>(0);
-  const [batchRef, setBatchRef] = useState("");
-
-  // --- Set Exact mode ---
   const [setQuantity, setSetQuantity] = useState<number>(0);
-
-  // --- Adjust by amount mode ---
   const [adjustBy, setAdjustBy] = useState<number>(0);
   const [adjustType, setAdjustType] = useState<AdjustmentType>("RESTOCK");
-
-  // Shared reason (used by set + adjust)
   const [reason, setReason] = useState("");
+  const [activeMode, setActiveMode] = useState<"set" | "adjust">("set");
 
-  // ─── Load product on mount ────────────────────────────
   useEffect(() => {
     const load = async () => {
       if (!id) return;
@@ -135,100 +101,33 @@ export default function InventoryDetailPage() {
     load();
   }, [id]);
 
-  // ─── Load recent transactions ─────────────────────────
-  const loadTransactions = useCallback(async () => {
-    if (!id) return;
-    try {
-      const res = await inventoryAPI.getProductTransactions(id, {
-        limit: 5,
-        page: 1,
-      });
-      if (res.success && res.data) {
-        setTransactions(res.data);
-      }
-    } catch {
-      // history is non-critical — swallow errors silently
-    }
-  }, [id]);
-
-  useEffect(() => {
-    loadTransactions();
-  }, [loadTransactions]);
-
-  const flashSuccess = (msg: string) => {
-    setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 3500);
-  };
-
-  // ─── Add Stock (primary) ─────────────────────────────
-  // Uses the adjust endpoint with a positive delta + RESTOCK type.
-  // The response contains the updated Product — use it directly.
-  const handleAddStock = async () => {
+  const refreshProduct = async () => {
     if (!product) return;
-    if (addAmount <= 0) {
-      alert("Please enter a positive quantity to add");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const res = await inventoryAPI.adjust(product.id, {
-        adjustment: addAmount,
-        reason: batchRef.trim()
-          ? `Restock — ${batchRef.trim()}`
-          : "Restock from supplier",
-        type: "RESTOCK",
-      });
-
-      if (!res.success) {
-        alert(res.error?.message || "Failed to add stock");
-        return;
-      }
-
-      // res.data is the updated Product from the API
-      if (res.data) {
-        setProduct(res.data);
-        setSetQuantity((res.data as Product).currentStock ?? 0);
-      }
-
-      flashSuccess(`Added ${addAmount} units to stock`);
-      setAddAmount(0);
-      setBatchRef("");
-      loadTransactions();
-    } catch (err: any) {
-      alert(err?.error?.message || err?.message || "Failed to add stock");
-    } finally {
-      setSaving(false);
+    const res = await productsAPI.get(product.id);
+    if (res.success && res.data) {
+      setProduct(res.data as Product);
     }
   };
 
-  // ─── Set Exact ────────────────────────────────────────
   const handleSetStock = async () => {
     if (!product) return;
     if (setQuantity < 0) {
       alert("Quantity cannot be negative");
       return;
     }
-
     setSaving(true);
     try {
       const res = await inventoryAPI.updateStock(product.id, {
         quantity: setQuantity,
         reason: reason || "Manual stock set",
       });
-
       if (!res.success) {
         alert(res.error?.message || "Failed to update stock");
         return;
       }
-
-      if (res.data) {
-        setProduct(res.data);
-      }
-
+      await refreshProduct();
       setReason("");
-      flashSuccess(`Stock set to ${setQuantity}`);
-      loadTransactions();
+      alert(`Stock set to ${setQuantity}`);
     } catch (err: any) {
       alert(err?.error?.message || err?.message || "Failed to update stock");
     } finally {
@@ -236,7 +135,6 @@ export default function InventoryDetailPage() {
     }
   };
 
-  // ─── Adjust by amount ─────────────────────────────────
   const handleAdjustStock = async () => {
     if (!product) return;
     if (adjustBy === 0) {
@@ -247,7 +145,6 @@ export default function InventoryDetailPage() {
       alert("Please provide a reason for the adjustment");
       return;
     }
-
     setSaving(true);
     try {
       const res = await inventoryAPI.adjust(product.id, {
@@ -255,21 +152,14 @@ export default function InventoryDetailPage() {
         reason: reason.trim(),
         type: adjustType,
       });
-
       if (!res.success) {
         alert(res.error?.message || "Failed to adjust stock");
         return;
       }
-
-      if (res.data) {
-        setProduct(res.data);
-        setSetQuantity((res.data as Product).currentStock ?? 0);
-      }
-
+      await refreshProduct();
       setAdjustBy(0);
       setReason("");
-      flashSuccess("Stock adjusted successfully");
-      loadTransactions();
+      alert("Stock adjusted successfully");
     } catch (err: any) {
       alert(err?.error?.message || err?.message || "Failed to adjust stock");
     } finally {
@@ -277,7 +167,6 @@ export default function InventoryDetailPage() {
     }
   };
 
-  // ─── Loading / error states ───────────────────────────
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -310,9 +199,7 @@ export default function InventoryDetailPage() {
 
   const previewSet = setQuantity;
   const previewAdjust = product.currentStock + adjustBy;
-  const previewAdd = product.currentStock + addAmount;
 
-  // ─── Render ───────────────────────────────────────────
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -342,14 +229,6 @@ export default function InventoryDetailPage() {
           </Button>
         </Link>
       </div>
-
-      {/* Success banner */}
-      {successMsg && (
-        <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-          <CheckCircle className="h-4 w-4" />
-          {successMsg}
-        </div>
-      )}
 
       {/* Current Stock Card */}
       <div className="rounded-xl border bg-white p-6 shadow-sm">
@@ -394,180 +273,33 @@ export default function InventoryDetailPage() {
         </div>
       </div>
 
-      {/* PRIMARY: Add Stock Card */}
-      <div className="rounded-xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-purple-50 p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-              <PackagePlus className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">
-                Add Stock
-              </h3>
-              <p className="text-xs text-gray-600">
-                Received a new batch from your supplier? Add it here.
-              </p>
-            </div>
-          </div>
-          <Badge className="border-0 bg-blue-600 text-white">
-            <Zap className="mr-1 h-3 w-3" />
-            Quick
-          </Badge>
-        </div>
-
-        {/* One-click presets */}
-        <div className="mb-4">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-600">
-            Quick add
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {QUICK_ADD_PRESETS.map((qty) => (
-              <button
-                key={qty}
-                type="button"
-                onClick={() => setAddAmount((prev) => prev + qty)}
-                className="flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all hover:border-blue-400 hover:bg-blue-50 hover:shadow"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {qty}
-              </button>
-            ))}
-            {addAmount > 0 && (
-              <button
-                type="button"
-                onClick={() => setAddAmount(0)}
-                className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-all hover:bg-gray-50"
-              >
-                <XCircle className="h-3.5 w-3.5" />
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Custom amount + stepper */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <Label htmlFor="addAmount">Quantity to add</Label>
-            <div className="mt-1 flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setAddAmount(Math.max(0, addAmount - 1))}
-                disabled={addAmount <= 0}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <Input
-                id="addAmount"
-                type="number"
-                min="0"
-                value={addAmount}
-                onChange={(e) =>
-                  setAddAmount(Math.max(0, parseInt(e.target.value) || 0))
-                }
-                className="h-11 text-center text-lg font-semibold"
-                placeholder="0"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setAddAmount(addAmount + 1)}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="batchRef">
-              Supplier / Batch reference{" "}
-              <span className="text-gray-400">(optional)</span>
-            </Label>
-            <Input
-              id="batchRef"
-              value={batchRef}
-              onChange={(e) => setBatchRef(e.target.value)}
-              placeholder="e.g. Batch #A-2024, Karachi Textiles"
-              className="mt-1 h-11"
-            />
-          </div>
-        </div>
-
-        {/* Preview */}
-        {addAmount > 0 && (
-          <div className="mt-4 rounded-lg border border-blue-200 bg-white p-3 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">Stock preview</span>
-              <div className="flex items-center gap-2 font-semibold">
-                <span className="text-gray-900">
-                  {product.currentStock}
-                </span>
-                <span className="text-gray-400">→</span>
-                <span className="text-blue-600">{previewAdd}</span>
-                <span className="flex items-center gap-0.5 text-green-600">
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  +{addAmount}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Primary CTA */}
-        <Button
-          onClick={handleAddStock}
-          disabled={saving || addAmount <= 0}
-          className="mt-4 w-full bg-gradient-to-r from-blue-600 to-purple-600 py-6 text-base font-semibold text-white hover:shadow-lg transition-shadow"
+      {/* Mode Tabs */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setActiveMode("set")}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 ${
+            activeMode === "set"
+              ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md"
+              : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
+          }`}
         >
-          <PackagePlus className="mr-2 h-5 w-5" />
-          {saving
-            ? "Adding..."
-            : addAmount > 0
-            ? `Add ${addAmount} units to stock`
-            : "Add stock"}
-        </Button>
-      </div>
-
-      {/* Secondary actions */}
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">
-          Other stock actions
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveMode("set")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-              activeMode === "set"
-                ? "bg-blue-600 text-white shadow"
-                : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            <Boxes className="h-3.5 w-3.5" />
-            Set exact quantity
-          </button>
-          <button
-            onClick={() => setActiveMode("adjust")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-              activeMode === "adjust"
-                ? "bg-blue-600 text-white shadow"
-                : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Adjust by amount
-          </button>
-        </div>
+          Set Exact Quantity
+        </button>
+        <button
+          onClick={() => setActiveMode("adjust")}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 ${
+            activeMode === "adjust"
+              ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md"
+              : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          Adjust by Amount
+        </button>
       </div>
 
       {/* Two Column Layout */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left Column */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Set Quantity Mode */}
           {activeMode === "set" && (
             <div className="rounded-xl border bg-white p-6 shadow-sm">
               <h3 className="mb-4 flex items-center text-lg font-semibold text-gray-900">
@@ -658,7 +390,6 @@ export default function InventoryDetailPage() {
             </div>
           )}
 
-          {/* Adjust by Amount Mode */}
           {activeMode === "adjust" && (
             <div className="rounded-xl border bg-white p-6 shadow-sm">
               <h3 className="mb-4 flex items-center text-lg font-semibold text-gray-900">
@@ -775,93 +506,51 @@ export default function InventoryDetailPage() {
               </div>
             </div>
           )}
-
-          {activeMode === "add" && (
-            <div className="rounded-xl border border-dashed bg-gray-50 p-6 text-center">
-              <PackagePlus className="mx-auto h-8 w-8 text-gray-300" />
-              <p className="mt-2 text-sm text-gray-500">
-                Use the <strong>Add Stock</strong> panel above, or choose
-                another action.
-              </p>
-            </div>
-          )}
         </div>
 
-        {/* Right Column — Sidebar */}
         <div className="space-y-6">
-          {/* Restock Presets */}
           <div className="rounded-xl border bg-white p-6 shadow-sm">
             <h3 className="mb-4 flex items-center font-semibold text-gray-900">
-              <Truck className="mr-2 h-4 w-4 text-blue-600" />
-              Restock Presets
+              <TrendingUp className="mr-2 h-4 w-4 text-green-600" />
+              Quick Stock Levels
             </h3>
             <div className="space-y-2">
-              {[10, 25, 50, 100, 200].map((qty) => (
+              {[10, 25, 50, 100].map((qty) => (
                 <Button
                   key={qty}
                   variant="outline"
                   className="w-full justify-between"
                   onClick={() => {
-                    setActiveMode("add");
-                    setAddAmount(qty);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
+                    setActiveMode("set");
+                    setSetQuantity(qty);
                   }}
                 >
-                  <span className="flex items-center gap-1.5">
-                    <PackagePlus className="h-3.5 w-3.5 text-blue-600" />
-                    Add {qty} units
-                  </span>
-                  <span className="text-xs text-green-600">
-                    → {product.currentStock + qty}
+                  <span>Set to {qty}</span>
+                  <span className="text-xs text-gray-500">
+                    {qty > product.currentStock
+                      ? `+${qty - product.currentStock}`
+                      : qty === product.currentStock
+                      ? "same"
+                      : `${qty - product.currentStock}`}
                   </span>
                 </Button>
               ))}
+              <Button
+                variant="outline"
+                className="w-full justify-between border-red-200 text-red-600 hover:bg-red-50"
+                onClick={() => {
+                  setActiveMode("set");
+                  setSetQuantity(0);
+                }}
+              >
+                <span>Clear Stock (0)</span>
+                <span className="text-xs">{0 - product.currentStock}</span>
+              </Button>
             </div>
           </div>
 
-          {/* Recent History */}
-          {transactions.length > 0 && (
-            <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <h3 className="mb-4 flex items-center font-semibold text-gray-900">
-                <History className="mr-2 h-4 w-4 text-gray-600" />
-                Recent Changes
-              </h3>
-              <div className="space-y-3">
-                {transactions.slice(0, 5).map((t) => {
-                  const positive = (t.quantity ?? 0) > 0;
-                  return (
-                    <div
-                      key={t.id}
-                      className="flex items-start justify-between gap-3 border-b border-gray-100 pb-2 last:border-0"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium text-gray-700">
-                          {t.type}
-                        </p>
-                        <p className="truncate text-[11px] text-gray-500">
-                          {t.reason || "—"}
-                        </p>
-                      </div>
-                      <span
-                        className={`flex-shrink-0 text-xs font-semibold ${
-                          positive ? "text-green-600" : "text-red-600"
-                        }`}
-                      >
-                        {positive ? "+" : ""}
-                        {t.quantity}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Product Info */}
           <div className="rounded-xl border bg-white p-6 shadow-sm">
-            <h3 className="mb-4 font-semibold text-gray-900">
-              Product Info
-            </h3>
+            <h3 className="mb-4 font-semibold text-gray-900">Product Info</h3>
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Product</span>
@@ -894,7 +583,6 @@ export default function InventoryDetailPage() {
             </div>
           </div>
 
-          {/* Quick Actions */}
           <div className="rounded-xl border bg-gradient-to-r from-blue-50 to-purple-50 p-6 shadow-sm">
             <h3 className="mb-3 text-sm font-medium text-gray-700">
               Quick Actions
